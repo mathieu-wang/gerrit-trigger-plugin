@@ -66,6 +66,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import static com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritDefaultValues.DEFAULT_GERRIT_NAME;
+import static com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritDefaultValues.DEFAULT_GERRIT_SSH_PORT;
 //CS IGNORE MagicNumber FOR NEXT 400 LINES. REASON: Test data.
 
 /**
@@ -99,7 +101,8 @@ public class GerritHandlerTest {
         PowerMockito.mockStatic(SshConnectionFactory.class);
         PowerMockito.doReturn(sshConnectionMock).when(SshConnectionFactory.class, "getConnection",
                 isA(String.class), isA(Integer.class), isA(String.class), isA(Authentication.class));
-        handler = new GerritHandler("localhost", 29418, new Authentication(null, ""));
+        handler = new GerritHandler(DEFAULT_GERRIT_NAME, "localhost", DEFAULT_GERRIT_SSH_PORT,
+                new Authentication(null, ""));
         handler.start();
         try {
             Thread.sleep(1000); //Lots and lots of timing issues here

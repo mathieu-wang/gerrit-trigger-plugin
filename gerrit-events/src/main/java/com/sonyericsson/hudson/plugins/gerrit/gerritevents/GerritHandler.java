@@ -70,6 +70,7 @@ import static com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritDefaultV
 import static com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritDefaultValues.DEFAULT_GERRIT_PROXY;
 import static com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritDefaultValues.DEFAULT_GERRIT_USERNAME;
 import static com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritDefaultValues.DEFAULT_NR_OF_RECEIVING_WORKER_THREADS;
+import static com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritDefaultValues.DEFAULT_GERRIT_NAME;
 
 /**
  * Main class for this module. Contains the main loop for connecting and reading streamed events from Gerrit.
@@ -84,7 +85,6 @@ public class GerritHandler extends Thread implements Coordinator {
     public static final int CONNECT_SLEEP = 2000;
     private static final String CMD_STREAM_EVENTS = "gerrit stream-events";
     private static final String GERRIT_VERSION_PREFIX = "gerrit version ";
-    private static final String GERRIT_NAME = "gerrit";
     private static final String GERRIT_PROTOCOL_NAME = "ssh";
     /**
      * The amount of milliseconds to pause when brute forcing the shutdown flag to true.
@@ -101,6 +101,7 @@ public class GerritHandler extends Thread implements Coordinator {
     protected static final int BRUTE_FORCE_TRIES = 10;
     private static final Logger logger = LoggerFactory.getLogger(GerritHandler.class);
     private BlockingQueue<Work> workQueue;
+    private String gerritName;
     private String gerritHostName;
     private int gerritSshPort;
     private String gerritProxy;
@@ -125,6 +126,7 @@ public class GerritHandler extends Thread implements Coordinator {
     /**
      * Creates a GerritHandler with all the default values set.
      *
+     * @see GerritDefaultValues#DEFAULT_GERRIT_NAME
      * @see GerritDefaultValues#DEFAULT_GERRIT_HOSTNAME
      * @see GerritDefaultValues#DEFAULT_GERRIT_SSH_PORT
      * @see GerritDefaultValues#DEFAULT_GERRIT_PROXY
@@ -134,7 +136,8 @@ public class GerritHandler extends Thread implements Coordinator {
      * @see GerritDefaultValues#DEFAULT_NR_OF_RECEIVING_WORKER_THREADS
      */
     public GerritHandler() {
-        this(DEFAULT_GERRIT_HOSTNAME,
+        this(DEFAULT_GERRIT_NAME,
+                DEFAULT_GERRIT_HOSTNAME,
                 DEFAULT_GERRIT_SSH_PORT,
                 DEFAULT_GERRIT_PROXY,
                 new Authentication(DEFAULT_GERRIT_AUTH_KEY_FILE,
@@ -146,14 +149,17 @@ public class GerritHandler extends Thread implements Coordinator {
     /**
      * Creates a GerritHandler with the specified values and default number of worker threads.
      *
+     * @param gerritName the name of the gerrit server.
      * @param gerritHostName the hostName
      * @param gerritSshPort  the ssh port that the gerrit server listens to.
      * @param authentication the authentication credentials.
      */
-    public GerritHandler(String gerritHostName,
+    public GerritHandler(String gerritName,
+                         String gerritHostName,
                          int gerritSshPort,
                          Authentication authentication) {
-        this(gerritHostName,
+        this(gerritName,
+                gerritHostName,
                 gerritSshPort,
                 authentication,
                 DEFAULT_NR_OF_RECEIVING_WORKER_THREADS);
@@ -162,24 +168,27 @@ public class GerritHandler extends Thread implements Coordinator {
     /**
      * Standard Constructor.
      *
+     * @param gerritName the name of the gerrit server.
      * @param config the configuration containing the connection values.
      */
-    public GerritHandler(GerritConnectionConfig config) {
-        this(config, DEFAULT_GERRIT_PROXY, 0, null);
+    public GerritHandler(String gerritName, GerritConnectionConfig config) {
+        this(gerritName, config, DEFAULT_GERRIT_PROXY, 0, null);
     }
 
     /**
      * Standard Constructor.
      *
+     * @param gerritName the name of the gerrit server.
      * @param config the configuration containing the connection values.
      */
-    public GerritHandler(GerritConnectionConfig2 config) {
-        this(config, config.getGerritProxy(), config.getWatchdogTimeoutSeconds(), config.getExceptionData());
+    public GerritHandler(String gerritName, GerritConnectionConfig2 config) {
+        this(gerritName, config, config.getGerritProxy(), config.getWatchdogTimeoutSeconds(), config.getExceptionData());
     }
 
     /**
      * Creates a GerritHandler with the specified values.
      *
+     * @param gerritName             the name of the gerrit server.
      * @param config                 the configuration containing the connection values.
      * @param gerritProxy            the proxy url socks5|http://host:port.
      * @param watchdogTimeoutSeconds number of seconds before the connection watch dog restarts the connection set to 0
@@ -187,11 +196,13 @@ public class GerritHandler extends Thread implements Coordinator {
      * @param exceptionData          time info for when the watch dog's timeout should not be in effect. set to null to
      *                               disable the watch dog.
      */
-    public GerritHandler(GerritConnectionConfig config,
+    public GerritHandler(String gerritName,
+                         GerritConnectionConfig config,
                          String gerritProxy,
                          int watchdogTimeoutSeconds,
                          WatchTimeExceptionData exceptionData) {
-        this(config.getGerritHostName(),
+        this(gerritName,
+                config.getGerritHostName(),
                 config.getGerritSshPort(),
                 gerritProxy,
                 config.getGerritAuthentication(),
@@ -202,38 +213,44 @@ public class GerritHandler extends Thread implements Coordinator {
     /**
      * Standard Constructor.
      *
+     * @param gerritName            the name of the gerrit server.
      * @param gerritHostName        the hostName for gerrit.
      * @param gerritSshPort         the ssh port that the gerrit server listens to.
      * @param gerritProxy           the proxy url socks5|http://host:port.
      * @param authentication        the authentication credentials.
      * @param numberOfWorkerThreads the number of event threads.
      */
-    public GerritHandler(String gerritHostName,
+    public GerritHandler(String gerritName,
+                         String gerritHostName,
                          int gerritSshPort,
                          String gerritProxy,
                          Authentication authentication,
                          int numberOfWorkerThreads) {
-        this(gerritHostName, gerritSshPort, gerritProxy, authentication, numberOfWorkerThreads, null, 0, null);
+        this(gerritName, gerritHostName, gerritSshPort, gerritProxy, authentication, numberOfWorkerThreads, null, 0,
+                null);
     }
 
     /**
          * Standard Constructor.
          *
+         * @param gerritName            the name of the gerrit server.
          * @param gerritHostName        the hostName for gerrit.
          * @param gerritSshPort         the ssh port that the gerrit server listens to.
          * @param authentication        the authentication credentials.
          * @param numberOfWorkerThreads the number of event threads.
          */
-        public GerritHandler(String gerritHostName,
+        public GerritHandler(String gerritName,
+                             String gerritHostName,
                              int gerritSshPort,
                              Authentication authentication,
                              int numberOfWorkerThreads) {
-            this(gerritHostName, gerritSshPort, DEFAULT_GERRIT_PROXY, authentication, numberOfWorkerThreads);
+            this(gerritName, gerritHostName, gerritSshPort, DEFAULT_GERRIT_PROXY, authentication, numberOfWorkerThreads);
         }
 
     /**
      * Standard Constructor.
      *
+     * @param gerritName              the name of the gerrit server.
      * @param gerritHostName          the hostName for gerrit.
      * @param gerritSshPort             the ssh port that the gerrit server listens to.
      * @param gerritProxy              the proxy url socks5|http://host:port.
@@ -245,7 +262,9 @@ public class GerritHandler extends Thread implements Coordinator {
      * @param exceptionData           time info for when the watch dog's timeout should not be in effect.
      *                                  set to null to disable the watch dog.
      */
-    public GerritHandler(String gerritHostName,
+    public GerritHandler(
+                         String gerritName,
+                         String gerritHostName,
                          int gerritSshPort,
                          String gerritProxy,
                          Authentication authentication,
@@ -254,6 +273,7 @@ public class GerritHandler extends Thread implements Coordinator {
                          int watchdogTimeoutSeconds,
                          WatchTimeExceptionData exceptionData) {
         super("Gerrit Events Reader");
+        this.gerritName = gerritName;
         this.gerritHostName = gerritHostName;
         this.gerritSshPort = gerritSshPort;
         this.gerritProxy = gerritProxy;
@@ -302,7 +322,7 @@ public class GerritHandler extends Thread implements Coordinator {
      */
     @Override
     public void run() {
-        logger.info("Starting Up...");
+        logger.info("Starting Up..." + gerritName);
         //Start the workers
         for (EventThread worker : workers) {
             //TODO what if nr of workers are increased/decreased in runtime.
@@ -328,13 +348,13 @@ public class GerritHandler extends Thread implements Coordinator {
                 br = new BufferedReader(reader);
                 String line = "";
                 Provider provider = new Provider(
-                        GERRIT_NAME,
+                        gerritName,
                         gerritHostName,
                         String.valueOf(gerritSshPort),
                         GERRIT_PROTOCOL_NAME,
                         DEFAULT_GERRIT_HOSTNAME,
                         getGerritVersionString());
-                logger.info("Ready to receive data from Gerrit");
+                logger.info("Ready to receive data from Gerrit: " + gerritName);
                 notifyConnectionEstablished();
                 do {
                     logger.debug("Data-line from Gerrit: {}", line);
@@ -399,9 +419,9 @@ public class GerritHandler extends Thread implements Coordinator {
             try {
                 logger.debug("Connecting...");
                 ssh = SshConnectionFactory.getConnection(gerritHostName, gerritSshPort, gerritProxy, authentication);
+                gerritVersion  = formatVersion(ssh.executeCommand("gerrit version"));
                 notifyConnectionEstablished();
                 connecting = false;
-                gerritVersion  = formatVersion(ssh.executeCommand("gerrit version"));
                 logger.debug("connection seems ok, returning it.");
                 return ssh;
             } catch (SshConnectException sshConEx) {

@@ -24,12 +24,6 @@
  */
 package com.sonyericsson.hudson.plugins.gerrit.trigger;
 
-import com.sonyericsson.hudson.plugins.gerrit.gerritevents.ConnectionListener;
-import com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritEventListener;
-import com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritHandler;
-import com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritSendCommandQueue;
-import com.sonyericsson.hudson.plugins.gerrit.gerritevents.dto.GerritEvent;
-import com.sonyericsson.hudson.plugins.gerrit.trigger.config.Config;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.config.IGerritHudsonTriggerConfig;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.TriggerContextConverter;
 import hudson.Plugin;
@@ -42,13 +36,7 @@ import hudson.security.PermissionGroup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
 
 /**
  * Main Plugin entrance.
@@ -85,27 +73,24 @@ public class PluginImpl extends Plugin {
             AbstractProject.BUILD);
 
     private static final Logger logger = LoggerFactory.getLogger(PluginImpl.class);
-    private transient GerritHandler gerritEventManager;
-    private transient GerritProjectListUpdater projectListUpdater;
     private static PluginImpl instance;
-    private IGerritHudsonTriggerConfig config;
-    private transient Collection<GerritEventListener> savedEventListeners;
-    private transient Collection<ConnectionListener> savedConnectionListeners;
+    private ArrayList<GerritServer> servers;
+
+    // the old config field is left as deprecated and transient so that data in previous format can be read in but
+    // not written back into the XML.
+    @Deprecated
+    private transient IGerritHudsonTriggerConfig config;
+
+    /**
+     * the default server name.
+     */
+    public static final String DEFAULT_SERVER_NAME = "defaultServer";
 
     /**
      * Constructor.
      */
     public PluginImpl() {
         instance = this;
-    }
-
-    /**
-     * Gets the global config.
-     *
-     * @return the config.
-     */
-    public IGerritHudsonTriggerConfig getConfig() {
-        return config;
     }
 
     /**
@@ -117,24 +102,80 @@ public class PluginImpl extends Plugin {
         return instance;
     }
 
+    /**
+     * Get the list of Gerrit servers.
+     *
+     * @return the list as an ArrayList of GerritServers
+     */
+    public synchronized ArrayList<GerritServer> getServers() {
+        if (servers == null) {
+            servers = new ArrayList<GerritServer>();
+        }
+        return servers;
+    }
+
+    /**
+     * Get a GerritServer object by its name.
+     *
+     * @param name the name of the server to get.
+     * @return the GerritServer object to get, or null if no server has this name.
+     */
+    public synchronized GerritServer getServer(String name) {
+        for (GerritServer s : servers) {
+            if (s.getName().equals(name)) {
+                return s;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Set the list of Gerrit servers.
+     *
+     * @param servers the list to be set.
+     */
+    public synchronized void setServers(ArrayList<GerritServer> servers) {
+        this.servers = servers;
+    }
+
+    /**
+     * Add a server to the list.
+     *
+     * @param s the server to be added.
+     * @return the list after adding the server.
+     */
+    public synchronized ArrayList<GerritServer> addServer(GerritServer s) {
+        servers.add(s);
+        return servers;
+    }
+
+    /**
+     * Remove a server from the list.
+     *
+     * @param s the server to be removed.
+     * @return the list after removing the server.
+     */
+    public synchronized ArrayList<GerritServer> removeServer(GerritServer s) {
+        servers.remove(s);
+        return servers;
+    }
+
     @Override
     public void start() throws Exception {
-        logger.info("Starting");
+        logger.info("Starting Gerrit-Trigger Plugin");
         doXStreamRegistrations();
-        loadConfig();
-        projectListUpdater = new GerritProjectListUpdater();
-        projectListUpdater.start();
-        //Starts the send-command-queue
-        GerritSendCommandQueue.getInstance(config);
-        //do not try to connect to gerrit unless there is a URL or a hostname in the text fields
-        List<VerdictCategory> categories = config.getCategories();
-        if (categories == null) {
-            categories = new LinkedList<VerdictCategory>();
-
+        logger.trace("Loading configs");
+        load();
+        if (servers == null) {
+            servers = new ArrayList<GerritServer>();
+            if (config != null) { //have loaded data in old format, so add a new server with the old config to the list.
+                GerritServer defaultServer = new GerritServer(DEFAULT_SERVER_NAME);
+                defaultServer.setConfig(config);
+                servers.add(defaultServer);
+            }
         }
-        if (categories.isEmpty()) {
-            categories.add(new VerdictCategory("CRVW", "Code Review"));
-            categories.add(new VerdictCategory("VRIF", "Verified"));
+        for (GerritServer s : servers) {
+            s.start();
         }
     }
 
@@ -153,216 +194,10 @@ public class PluginImpl extends Plugin {
         logger.trace("XStream alias registrations done.");
     }
 
-    /**
-     * Loads the configuration from disk.
-     *
-     * @throws IOException if the unfortunate happens.
-     */
-    private void loadConfig() throws IOException {
-        logger.trace("loadConfig");
-        load();
-
-        if (config == null) {
-            config = new Config();
-        }
-    }
-
     @Override
     public void stop() throws Exception {
-        logger.info("Shutting down...");
-        projectListUpdater.shutdown();
-        projectListUpdater.join();
-        if (gerritEventManager != null) {
-            gerritEventManager.shutdown(false);
-            //TODO save to register listeners?
-            gerritEventManager = null;
-        }
-        GerritSendCommandQueue.shutdown();
-    }
-
-    /**
-     * Creates the GerritEventManager
-     */
-    private void createManager() {
-        gerritEventManager = new GerritHandler(config);
-        //Add any event/connectionlisteners that were created while the connection was down.
-        if (savedConnectionListeners != null) {
-            gerritEventManager.addConnectionListeners(savedConnectionListeners);
-            savedConnectionListeners = null;
-        }
-        if (savedEventListeners != null) {
-            gerritEventManager.addEventListeners(savedEventListeners);
-            savedEventListeners = null;
-        }
-    }
-
-    /**
-     * Adds a listener to the EventManager.  The listener will receive all events from Gerrit.
-     *
-     * @param listener the listener.
-     * @see GerritHandler#addListener(com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritEventListener)
-     */
-    public void addListener(GerritEventListener listener) {
-        if (gerritEventManager != null) {
-            gerritEventManager.addListener(listener);
-        } else {
-            //If the eventmanager isn't created yet, save the eventlistener so it can be added once
-            //the eventmanager is created.
-            if (savedEventListeners == null) {
-                savedEventListeners = Collections.synchronizedSet(new HashSet<GerritEventListener>());
-            }
-            savedEventListeners.add(listener);
-        }
-    }
-
-    /**
-     * Removes a listener from the manager.
-     *
-     * @param listener the listener to remove.
-     * @see GerritHandler#removeListener(com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritEventListener)
-     */
-    public void removeListener(GerritEventListener listener) {
-        if (gerritEventManager != null) {
-            gerritEventManager.removeListener(listener);
-        } else {
-            if (savedEventListeners != null) {
-                savedEventListeners.remove(listener);
-            }
-        }
-    }
-
-    /**
-     * Removes a connection listener from the manager.
-     *
-     * @param listener the listener to remove.
-     */
-    public void removeListener(ConnectionListener listener) {
-        if (gerritEventManager != null) {
-            gerritEventManager.removeListener(listener);
-        } else {
-            if (savedConnectionListeners != null) {
-                savedConnectionListeners.remove(listener);
-            }
-        }
-    }
-
-    /**
-     * Starts the connection to Gerrit stream of events.
-     *
-     * @throws Exception if it is so unfortunate.
-     */
-    public synchronized void startConnection() throws Exception {
-        if (!config.hasDefaultValues()) {
-            if (gerritEventManager == null) {
-                createManager();
-                if (savedEventListeners != null) {
-                    gerritEventManager.addEventListeners(savedEventListeners);
-                    savedEventListeners = null;
-                }
-                if (savedConnectionListeners != null) {
-                    gerritEventManager.addConnectionListeners(savedConnectionListeners);
-                    savedConnectionListeners = null;
-                }
-                gerritEventManager.start();
-                logger.info("Started");
-            } else {
-                logger.warn("Already started!");
-            }
-        }
-    }
-
-    /**
-     * Stops the connection to Gerrit stream of events.
-     *
-     * @throws Exception if it is so unfortunate.
-     */
-    public synchronized void stopConnection() throws Exception {
-        if (gerritEventManager != null) {
-            savedEventListeners = null;
-            savedConnectionListeners = null;
-            gerritEventManager.shutdown(true);
-
-            savedEventListeners = gerritEventManager.removeAllEventListeners();
-            savedConnectionListeners = gerritEventManager.removeAllConnectionListeners();
-            gerritEventManager = null;
-        } else {
-            logger.warn("Was told to shutdown again!?");
-        }
-    }
-
-    /**
-     * Restarts the connection to Gerrit stream of events.
-     *
-     * @throws Exception if it is so unfortunate.
-     */
-    public void restartConnection() throws Exception {
-        stopConnection();
-        startConnection();
-    }
-
-    /**
-     * Adds a Connection Listener to the manager.
-     * Return the current connection status so that listeners that
-     * are added later than a connectionestablished/ connectiondown
-     * will get the current connection status.
-     *
-     * @param listener the listener.
-     * @return the connection status.
-     */
-    public boolean addListener(ConnectionListener listener) {
-        boolean connected = false;
-        if (gerritEventManager != null) {
-            connected = gerritEventManager.addListener(listener);
-        } else {
-            //If the eventmanager isn't created yet, save the connectionlistener so it can be added once
-            //the eventmanager is created.
-            if (savedConnectionListeners == null) {
-                savedConnectionListeners = Collections.synchronizedSet(new HashSet<ConnectionListener>());
-            }
-            savedConnectionListeners.add(listener);
-        }
-        return connected;
-    }
-
-    /**
-     * Returns a list of Gerrit projects.
-     *
-     * @return list of gerrit projects
-     */
-    public List<String> getGerritProjects() {
-        if (projectListUpdater != null) {
-            return projectListUpdater.getGerritProjects();
-        } else {
-            return new ArrayList<String>();
-        }
-    }
-
-    /**
-     * Adds the given event to the stream of events.
-     * It gets added to the same event queue as any event coming from the stream-events command in Gerrit.
-     *
-     * @param event the event.
-     * @see GerritHandler#triggerEvent(com.sonyericsson.hudson.plugins.gerrit.gerritevents.dto.GerritEvent)
-     */
-    public void triggerEvent(GerritEvent event) {
-        if (gerritEventManager != null) {
-            gerritEventManager.triggerEvent(event);
-        } else {
-            throw new IllegalStateException("Manager not started!");
-        }
-    }
-
-    /**
-     * Returns the current Gerrit version.
-     * If we are connected to Gerrit, otherwise null is returned.
-     *
-     * @return the current gerrit version as a String.
-     */
-    public String getGerritVersion() {
-        if (gerritEventManager != null) {
-            return gerritEventManager.getGerritVersion();
-        } else {
-            return null;
+        for (GerritServer s : servers) {
+            s.stop();
         }
     }
 }
