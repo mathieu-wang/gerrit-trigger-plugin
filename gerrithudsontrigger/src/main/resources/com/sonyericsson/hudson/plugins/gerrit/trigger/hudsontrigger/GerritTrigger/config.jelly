@@ -9,6 +9,11 @@
         <f:entry title="${%Choose a server}" description="${it.description}" field="serverName">
             <f:select/>
         </f:entry>
+        <!--<j:if test=true>-->
+            <f:entry title="${%Choose a mirror}" description="${it.description}" field="mirror">
+                <f:select/>
+        <!--</j:if>-->
+        </f:entry>
         <f:advanced>
             <f:entry title="${%Escape quotes in parameter values}"  field="escapeQuotes"
                  help="/plugin/gerrit-trigger/trigger/help-EscapeQuotes.html">

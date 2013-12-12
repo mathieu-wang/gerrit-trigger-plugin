@@ -271,6 +271,52 @@
 
                         </f:optionalBlock>
                     </f:section>
+                    <f:section title="${%Replication Events}">
+                        <f:optionalBlock name="enableReplication" title="${%Enable Triggering On Replication}" checked="${it.config.enableReplication}">
+                            <f:entry title="${%Gerrit Mirrors}">
+                                <f:repeatable var="mirror" items="${it.config.gerritMirrors}" name="mirrors"
+                                              add="${%Add Gerrit Mirror}" minimum="1" header="${%Gerrit Mirror}">
+                                    <table>
+                                        <tr>
+                                            <td>
+                                                ${%Host Name}
+                                            </td>
+                                            <td>
+                                                <f:textbox name="hostName" value="${mirror.hostName}"/>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>
+                                                ${%Display Name}
+                                            </td>
+                                            <td>
+                                                <f:textbox name="displayName" value="${mirror.displayName}"/>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>
+                                                ${%Time-out}
+                                            </td>
+                                            <td>
+                                                <f:textbox name="timeout" value="${mirror.timeout}"/>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>
+                                                <f:repeatableDeleteButton/>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </f:repeatable>
+                            </f:entry>
+                            <f:entry title="${%Allow Mirror Selection in Job Configurations}"
+                                 help="/plugin/gerrit-trigger/help-enableMirrorSelectionInJobs.html">
+                            <f:checkbox name="enableMirrorConfigInJobs"
+                                        checked="${it.config.enableMirrorSelectionInJobs}"
+                                        default="${true}"/>
+                            </f:entry>
+                        </f:optionalBlock>
+                    </f:section>
                     <f:section title="${%Watchdog}">
                         <f:entry title="${%Connection watchdog timeout}"
                                  help="/plugin/gerrit-trigger/help-ConnectionWatchdogTimeout.html">

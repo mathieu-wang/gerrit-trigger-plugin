@@ -34,6 +34,7 @@ import com.sonyericsson.hudson.plugins.gerrit.gerritevents.watchdog.WatchTimeExc
 import com.sonyericsson.hudson.plugins.gerrit.gerritevents.watchdog.WatchTimeExceptionData.Time;
 import com.sonyericsson.hudson.plugins.gerrit.gerritevents.watchdog.WatchTimeExceptionData.TimeSpan;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.VerdictCategory;
+import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.GerritMirror;
 import hudson.util.Secret;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
@@ -160,10 +161,10 @@ public class Config implements IGerritHudsonTriggerConfig {
     private int buildScheduleDelay;
     private int dynamicConfigRefreshInterval;
     private List<VerdictCategory> categories;
+    private boolean enableReplication;
+    private List<GerritMirror> mirrors;
     private int watchdogTimeoutMinutes;
     private WatchTimeExceptionData watchTimeExceptionData;
-
-
 
     /**
      * Constructor.
@@ -214,6 +215,12 @@ public class Config implements IGerritHudsonTriggerConfig {
             categories = new LinkedList<VerdictCategory>();
             for (VerdictCategory cat : config.getCategories()) {
                 categories.add(new VerdictCategory(cat.getVerdictValue(), cat.getVerdictDescription()));
+            }
+        }
+        if (config.getGerritMirrors() != null) {
+            mirrors = new LinkedList<GerritMirror>();
+            for (GerritMirror mirror : config.getGerritMirrors()) {
+                mirrors.add(new GerritMirror(mirror.getHostName(), mirror.getDisplayName(), mirror.getTimeout()));
             }
         }
         watchdogTimeoutMinutes = config.getWatchdogTimeoutMinutes();
@@ -349,6 +356,21 @@ public class Config implements IGerritHudsonTriggerConfig {
             useRestApi = false;
         }
 
+        mirrors = new LinkedList<GerritMirror>();
+        if (formData.has("enableReplication")) {
+            this.enableReplication = true;
+            JSONObject replicationConfigAsJSON = formData.getJSONObject("enableReplication");
+            Object mirrorsAsJSON = replicationConfigAsJSON.get("mirrors");
+            if (mirrorsAsJSON instanceof JSONArray) {
+                for (Object jsonObject : (JSONArray)mirrorsAsJSON) {
+                    this.mirrors.add(GerritMirror.createGerritMirrorFromJSON((JSONObject)jsonObject));
+                }
+            } else if (mirrorsAsJSON instanceof JSONObject) {
+                this.mirrors.add(GerritMirror.createGerritMirrorFromJSON((JSONObject)mirrorsAsJSON));
+            }
+        } else {
+            enableReplication = false;
+        }
     }
 
     /**
@@ -854,6 +876,16 @@ public class Config implements IGerritHudsonTriggerConfig {
     @Override
     public boolean isEnablePluginMessages() {
         return enablePluginMessages;
+    }
+
+    @Override
+    public boolean isEnableReplication() {
+        return enableReplication;
+    }
+
+    @Override
+    public List<GerritMirror> getGerritMirrors() {
+        return mirrors;
     }
 
     @Override

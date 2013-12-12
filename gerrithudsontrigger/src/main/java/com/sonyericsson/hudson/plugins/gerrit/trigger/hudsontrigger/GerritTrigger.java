@@ -47,6 +47,7 @@ import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.actions.Gerr
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.actions.RetriggerAction;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.actions.RetriggerAllAction;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.CompareType;
+import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.GerritMirror;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.GerritProject;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.SkipVote;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.TriggerContext;
@@ -1475,7 +1476,8 @@ public class GerritTrigger extends Trigger<AbstractProject> implements GerritEve
         }
 
         /**
-         * method to get list of servers configured globally.
+         * Fill the server dropdown with the list of servers configured globally.
+         *
          * @return list of servers.
          */
         public ListBoxModel doFillServerNameItems() {
@@ -1484,6 +1486,23 @@ public class GerritTrigger extends Trigger<AbstractProject> implements GerritEve
             LinkedList<String> serverNames = PluginImpl.getInstance().getServerNames();
             for (String s : serverNames) {
                 items.add(s);
+            }
+            return items;
+        }
+
+        /**
+         * Fill the Gerrit mirror dropdown with the list of mirrors configured with the selected server.
+         *
+         * @param serverName the name of the selected server.
+         * @return list of mirrors.
+         */
+        public ListBoxModel doFillMirrorItems(@QueryParameter("serverName") final String serverName) {
+            ListBoxModel items = new ListBoxModel();
+            //TODO: Check any server
+            List<GerritMirror> gerritMirrors = PluginImpl.getInstance().getServer(serverName)
+                    .getConfig().getGerritMirrors();
+            for (GerritMirror mirror : gerritMirrors) {
+                items.add(mirror.getDisplayName());
             }
             return items;
         }

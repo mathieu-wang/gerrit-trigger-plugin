@@ -27,6 +27,7 @@ package com.sonyericsson.hudson.plugins.gerrit.trigger.config;
 import com.sonyericsson.hudson.plugins.gerrit.gerritevents.GerritConnectionConfig2;
 import com.sonyericsson.hudson.plugins.gerrit.gerritevents.dto.events.GerritTriggeredEvent;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.VerdictCategory;
+import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.GerritMirror;
 import net.sf.json.JSONObject;
 
 import java.util.List;
@@ -225,6 +226,20 @@ public interface IGerritHudsonTriggerConfig extends GerritConnectionConfig2 {
      * @return username
      */
     String getGerritHttpUserName();
+
+    /**
+     * If we enable waiting on replication events.
+     *
+     * @return true if so.
+     */
+    boolean isEnableReplication();
+
+    /**
+     * Get the list of available Gerrit mirrors.
+     *
+     * @return the list
+     */
+    List<GerritMirror> getGerritMirrors();
 
     /**
      * NumberOfSendingWorkerThreads.
