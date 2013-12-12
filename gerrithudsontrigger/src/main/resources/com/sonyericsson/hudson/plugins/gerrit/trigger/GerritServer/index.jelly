@@ -271,6 +271,36 @@
 
                         </f:optionalBlock>
                     </f:section>
+                    <f:section title="${%Replication Events}">
+                        <f:optionalBlock name="enableReplication" title="${%Enable Triggering On Replication}" checked="${it.config.replicationConfig.enableReplication}">
+                            <f:entry title="${%Gerrit Mirrors}">
+                                <f:repeatable var="mirror" items="${it.config.replicationConfig.gerritMirrors}" name="mirrors"
+                                              add="${%Add Gerrit Mirror}" minimum="1" header="${%Gerrit Mirror}">
+                                    <table>
+                                        <f:entry title="${%Host Name}" help="/plugin/gerrit-trigger/help-ReplicationMirrorHostName.html">
+                                            <f:textbox name="hostName"
+                                                       value="${mirror.hostName}"/>
+                                        </f:entry>
+                                        <f:entry title="${%Display Name}" help="/plugin/gerrit-trigger/help-ReplicationMirrorDisplayName.html">
+                                            <f:textbox name="displayName"
+                                                       value="${mirror.displayName}"/>
+                                        </f:entry>
+                                        <f:entry title="${%Time-out}" help="/plugin/gerrit-trigger/help-ReplicationMirrorTimeout.html">
+                                            <f:textbox name="timeout"
+                                                       value="${mirror.timeout}"
+                                                       checkUrl="'${rootURL}/${serverURL}/integerCheck?value='+escape(this.value)"/>
+                                        </f:entry>
+                                    </table>
+                                </f:repeatable>
+                            </f:entry>
+                            <f:entry title="${%Allow Mirror Selection in Job Configurations}"
+                                 help="/plugin/gerrit-trigger/help-enableMirrorSelectionInJobs.html">
+                            <f:checkbox name="enableMirrorSelectionInJobs"
+                                        checked="${it.config.replicationConfig.enableMirrorSelectionInJobs}"
+                                        default="${true}"/>
+                            </f:entry>
+                        </f:optionalBlock>
+                    </f:section>
                     <f:section title="${%Watchdog}">
                         <f:entry title="${%Connection watchdog timeout}"
                                  help="/plugin/gerrit-trigger/help-ConnectionWatchdogTimeout.html">

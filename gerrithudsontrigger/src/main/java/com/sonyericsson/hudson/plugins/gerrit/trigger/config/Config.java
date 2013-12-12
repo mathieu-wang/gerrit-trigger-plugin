@@ -160,10 +160,9 @@ public class Config implements IGerritHudsonTriggerConfig {
     private int buildScheduleDelay;
     private int dynamicConfigRefreshInterval;
     private List<VerdictCategory> categories;
+    private ReplicationConfig replicationConfig;
     private int watchdogTimeoutMinutes;
     private WatchTimeExceptionData watchTimeExceptionData;
-
-
 
     /**
      * Constructor.
@@ -215,6 +214,9 @@ public class Config implements IGerritHudsonTriggerConfig {
             for (VerdictCategory cat : config.getCategories()) {
                 categories.add(new VerdictCategory(cat.getVerdictValue(), cat.getVerdictDescription()));
             }
+        }
+        if (config.getReplicationConfig() != null) {
+            replicationConfig = new ReplicationConfig(config.getReplicationConfig());
         }
         watchdogTimeoutMinutes = config.getWatchdogTimeoutMinutes();
         watchTimeExceptionData = addWatchTimeExceptionData(config.getExceptionData());
@@ -349,6 +351,7 @@ public class Config implements IGerritHudsonTriggerConfig {
             useRestApi = false;
         }
 
+        replicationConfig = ReplicationConfig.createReplicationConfigFromJSON(formData);
     }
 
     /**
@@ -854,6 +857,11 @@ public class Config implements IGerritHudsonTriggerConfig {
     @Override
     public boolean isEnablePluginMessages() {
         return enablePluginMessages;
+    }
+
+    @Override
+    public ReplicationConfig getReplicationConfig() {
+        return replicationConfig;
     }
 
     @Override

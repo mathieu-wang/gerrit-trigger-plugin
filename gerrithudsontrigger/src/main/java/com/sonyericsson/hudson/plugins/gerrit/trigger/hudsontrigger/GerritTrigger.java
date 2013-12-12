@@ -42,11 +42,13 @@ import com.sonyericsson.hudson.plugins.gerrit.trigger.VerdictCategory;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.events.ManualPatchsetCreated;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.events.lifecycle.GerritEventLifecycle;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.config.IGerritHudsonTriggerConfig;
+import com.sonyericsson.hudson.plugins.gerrit.trigger.config.ReplicationConfig;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.gerritnotifier.ToGerritRunListener;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.actions.GerritTriggerInformationAction;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.actions.RetriggerAction;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.actions.RetriggerAllAction;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.CompareType;
+import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.GerritMirror;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.GerritProject;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.SkipVote;
 import com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.TriggerContext;
@@ -133,6 +135,7 @@ public class GerritTrigger extends Trigger<AbstractProject> implements GerritEve
     private String buildUnsuccessfulFilepath;
     private String customUrl;
     private String serverName;
+    private String mirror;
     private List<PluginGerritEvent> triggerOnEvents;
     private boolean allowTriggeringUnreviewedPatches;
     private boolean dynamicTriggerConfiguration;
@@ -189,6 +192,7 @@ public class GerritTrigger extends Trigger<AbstractProject> implements GerritEve
      *                                       unsuccessful build.
      * @param customUrl                      Custom URL to sen to Gerrit instead of build URL
      * @param serverName                     The selected server
+     * @param mirror                         The Gerrit mirror associated to this job, if enabled in server configs
      * @param triggerOnEvents                The list of event types to trigger on.
      * @param dynamicTriggerConfiguration    Dynamic trigger configuration on or off
      * @param allowTriggeringUnreviewedPatches
@@ -220,6 +224,7 @@ public class GerritTrigger extends Trigger<AbstractProject> implements GerritEve
             String buildUnsuccessfulFilepath,
             String customUrl,
             String serverName,
+            String mirror,
             List<PluginGerritEvent> triggerOnEvents,
             boolean dynamicTriggerConfiguration,
             boolean allowTriggeringUnreviewedPatches,
@@ -247,6 +252,7 @@ public class GerritTrigger extends Trigger<AbstractProject> implements GerritEve
         this.buildUnsuccessfulFilepath = buildUnsuccessfulFilepath;
         this.customUrl = customUrl;
         this.serverName = serverName;
+        this.mirror = mirror;
         this.triggerOnEvents = triggerOnEvents;
         this.dynamicTriggerConfiguration = dynamicTriggerConfiguration;
         this.triggerConfigURL = triggerConfigURL;
@@ -1429,6 +1435,35 @@ public class GerritTrigger extends Trigger<AbstractProject> implements GerritEve
                 .isCorrectVersion(GerritVersionChecker.Feature.triggerOnDraftPublished, serverName);
     }
 
+    /**
+     * Whether mirror selection in jobs should be allowed.
+     * If so, the user will see one more dropdown on the job config page, right under server selection dropdown.
+     * @return true if so.
+     */
+    public boolean isEnableMirrorSelectionInJobs() {
+        if (serverName.equals(ANY_SERVER)) {
+            return true; //Enables the UI to give the user a chance to change the server
+        }
+        GerritServer server = PluginImpl.getInstance().getServer(serverName);
+        if (server == null) {
+            logger.warn("Could not find server: {}", serverName);
+            return false;
+        }
+        ReplicationConfig replicationConfig = server.getConfig().getReplicationConfig();
+        if (replicationConfig == null) {
+            return false;
+        }
+        return replicationConfig.isEnableMirrorSelectionInJobs();
+    }
+
+    /**
+     * Shortcut to get the GerritMirror object associated to this project.
+     * @return the GerritMirror object.
+     */
+    public GerritMirror getGerritMirror() {
+        return GerritMirror.getGerritMirror(serverName, mirror);
+    }
+
     @Override
     public List<Action> getProjectActions() {
         List<Action> list = new LinkedList<Action>();
@@ -1475,15 +1510,69 @@ public class GerritTrigger extends Trigger<AbstractProject> implements GerritEve
         }
 
         /**
-         * method to get list of servers configured globally.
+         * Fill the server dropdown with the list of servers configured globally.
+         *
          * @return list of servers.
          */
         public ListBoxModel doFillServerNameItems() {
             ListBoxModel items = new ListBoxModel();
-            items.add(Messages.AnyServer(), ANY_SERVER);
+            if (shouldAddAnyServerAsOption()) {
+                items.add(Messages.AnyServer(), ANY_SERVER);
+            }
             LinkedList<String> serverNames = PluginImpl.getInstance().getServerNames();
             for (String s : serverNames) {
                 items.add(s);
+            }
+            return items;
+        }
+
+        /**
+         * Used to remove the "Any Server" option when there is at least one server that allows replication
+         * and that allows the user to choose a specific mirror.
+         *
+         * @return true if "Any Server" should be added as an option in the servers dropdown.
+         */
+        private boolean shouldAddAnyServerAsOption() {
+            List<GerritServer> servers = PluginImpl.getInstance().getServers();
+            for (GerritServer server : servers) {
+                ReplicationConfig replicationConfig = server.getConfig().getReplicationConfig();
+                if (replicationConfig != null
+                        && replicationConfig.isEnableReplication()
+                        && replicationConfig.isEnableMirrorSelectionInJobs()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /**
+         * Fill the Gerrit mirror dropdown with the list of mirrors configured with the selected server.
+         * Expected to be called only when mirror config is enabled at job level.
+         *
+         * @param serverName the name of the selected server.
+         * @return list of mirrors.
+         */
+        public ListBoxModel doFillMirrorItems(@QueryParameter("serverName") final String serverName) {
+            ListBoxModel items = new ListBoxModel();
+            GerritServer server = PluginImpl.getInstance().getServer(serverName);
+            if (server == null) {
+                logger.warn(Messages.CouldNotFindServer(serverName));
+                items.add(Messages.CouldNotFindServer(serverName));
+                return items;
+            }
+            ReplicationConfig replicationConfig = server.getConfig().getReplicationConfig();
+            if (replicationConfig == null) {
+                items.add(Messages.ReplicationNotConfigured());
+                return items;
+            } else if (!replicationConfig.isEnableReplication()){
+                items.add(Messages.ReplicationNotConfigured());
+                return items;
+            } else if (!replicationConfig.isEnableMirrorSelectionInJobs()) {
+                items.add(Messages.MirrorSelectionInJobsDisabled());
+                return items;
+            }
+            for (GerritMirror mirror : replicationConfig.getGerritMirrors()) {
+                items.add(mirror.getDisplayName());
             }
             return items;
         }
